@@ -1,126 +1,104 @@
-import { Component } from 'react';
+import { useState, useEffect } from 'react';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.min.css';
+import { animateScroll as scroll } from 'react-scroll';
 import { getImages } from 'api/api-images';
 import { Searchbar } from './Searchbar';
 import { Loader } from 'components/Loader';
 import { ImageGallery } from 'components/ImageGallery';
 import { Button } from './Button';
-import Modal from './Modal/Modal';
+import { Modal } from './Modal/Modal';
 import styles from './App.module.css';
 
-export class App extends Component {
-  state = {
-    images: [],
-    searchImages: '',
-    page: 1,
-    loading: false,
-    error: null,
-    openModal: false,
-    contentModal: {
-      tags: '',
-      largeImageURL: '',
-    },
-    total: 0,
-  };
+const initialModal = {
+  tags: '',
+  largeImageURL: '',
+};
 
-  componentDidUpdate(prevProps, prevState) {
-    if (prevState.searchImages !== this.state.searchImages) {
-      this.fetchImage();
+export const App = () => {
+  const [images, setImages] = useState([]);
+  const [searchImages, setSearchImages] = useState('');
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [openModal, setOpenModal] = useState(false);
+  const [contentModal, setContentModal] = useState(initialModal);
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    if (!searchImages) {
+      return;
     }
-  }
 
-  fetchImage = async () => {
-    const { page, searchImages } = this.state;
+    const fetchImage = async () => {
+      setLoading(true);
 
-    this.setState({ loading: true });
+      try {
+        const data = await getImages(searchImages, page);
+        setImages(prevImages => [...prevImages, ...data.hits]);
 
-    try {
-      const data = await getImages(searchImages, page);
+        setTotal(data.total);
 
-      this.setState(prevState => {
-        return {
-          images: [...prevState.images, ...data.hits],
-          page: prevState.page + 1,
-          total: data.total,
-        };
-      }, this.scrollOnLoadButton);
+        if (page === 1 && data.total > 0) {
+          toast.success(`We found ${data.total} images`);
+        }
 
-      if (page === 1 && data.total > 0) {
-        toast.success(`We found ${data.total} images`);
+        if (page !== 1) {
+          scroll.scrollMore(330, { smooth: true });
+        }
+      } catch (error) {
+        setError(error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      this.setState({
-        error,
-      });
-    } finally {
-      this.setState({ loading: false });
-    }
+    };
+
+    fetchImage();
+  }, [searchImages, page]);
+
+  const loadMore = () => {
+    setPage(prevPage => prevPage + 1);
   };
 
-  onSearchSubmit = searchImages => {
-    this.setState({ searchImages, page: 1, images: [], error: null });
+  const onSearchSubmit = searchImages => {
+    setSearchImages(searchImages);
+    setImages([]);
+    setPage(1);
+    setError(null);
   };
 
-  onCloseModal = () => {
-    this.setState({
-      openModal: false,
-      contentModal: {
-        tags: '',
-        largeImageURL: '',
-      },
-    });
+  const onCloseModal = () => {
+    setOpenModal(false);
+    setContentModal(initialModal);
   };
 
-  onOpenModal = contentModal => {
-    this.setState({
-      openModal: true,
-      contentModal,
-    });
+  const onOpenModal = contentModal => {
+    setOpenModal(true);
+    setContentModal(contentModal);
   };
 
-  scrollOnLoadButton = () => {
-    window.scrollTo({
-      top: document.body.clientHeight - 1000,
-      behavior: 'smooth',
-    });
-  };
+  const showLoadMoreBtn = images.length !== total;
 
-  render() {
-    const { loading, error, openModal, images, contentModal, total } =
-      this.state;
-
-    const showLoadMoreBtn = images.length !== total;
-
-    return (
-      <div className={styles.app}>
-        <Searchbar onSearchSubmit={this.onSearchSubmit} />
-
-        {loading && <Loader />}
-
-        {error && <p className={styles.appText}>Please try again later</p>}
-
-        {images.length < 1 && !loading &&
-          !error && (
-          <div className={styles.appText}>There's nothing here :(</div>
-        )}
-
-        <ImageGallery images={images} onClick={this.onOpenModal} />
-
-        {showLoadMoreBtn && !loading && <Button onClick={this.fetchImage} />}
-
-        <ToastContainer autoClose={3000} />
-
-        {openModal && (
-          <Modal onClose={this.onCloseModal}>
-            <img
-              className={styles.appModal}
-              src={contentModal.largeImageURL}
-              alt={contentModal.tags}
-            />
-          </Modal>
-        )}
-      </div>
-    );
-  }
-}
+  return (
+    <div className={styles.app}>
+      <Searchbar onSearchSubmit={onSearchSubmit} />
+      {loading && <Loader />}
+      {error && <p className={styles.appText}>Please try again later</p>}
+      {images.length < 1 && !loading && !error && (
+        <div className={styles.appText}>There's nothing here :(</div>
+      )}
+      <ImageGallery images={images} onClick={onOpenModal} />
+      {showLoadMoreBtn && !loading && <Button onClick={loadMore} />}
+      <ToastContainer autoClose={3000} />
+      {openModal && (
+        <Modal onClose={onCloseModal}>
+          <img
+            className={styles.appModal}
+            src={contentModal.largeImageURL}
+            alt={contentModal.tags}
+          />
+        </Modal>
+      )}
+    </div>
+  );
+};
